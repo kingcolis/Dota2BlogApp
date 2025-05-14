@@ -34,16 +34,26 @@ function authMiddleware(req, res, next) {
 
 app.post('/register', async (req, res) => {
   const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ message: 'All fields are required' });
+  }
+
   try {
     const userDoc = await User.create({
       username,
       password: bcrypt.hashSync(password, salt),
     });
-    res.json(userDoc);
+    res.status(200).json(userDoc);
   } catch (e) {
-    res.status(400).json(e);
+    if (e.code === 11000) {
+      res.status(400).json({ message: 'Username already exists' });
+    } else {
+      res.status(400).json({ message: 'Registration error' });
+    }
   }
 });
+
 
 app.post('/login', async (req, res) => {
   const { username, password } = req.body;
@@ -58,7 +68,7 @@ app.post('/login', async (req, res) => {
       });
     });
   } else {
-    res.status(400).json('wrong credentials');
+    res.status(400).json('Wrong credentials');
   }
 });
 
@@ -102,15 +112,15 @@ app.put('/post', authMiddleware, uploadMiddleware.single('file'), async (req, re
   const postDoc = await Post.findById(id);
   const isAuthor = JSON.stringify(postDoc.author) === JSON.stringify(req.user.id);
   if (!isAuthor) {
-    return res.status(400).json('you are not the author');
+    return res.status(400).json('You are not the author');
   }
 
-  await postDoc.update({
-    title,
-    summary,
-    content,
-    cover: newPath ? newPath : postDoc.cover,
-  });
+  postDoc.title = title;
+  postDoc.summary = summary;
+  postDoc.content = content;
+  postDoc.cover = newPath ? newPath : postDoc.cover;
+
+  await postDoc.save();
 
   res.json(postDoc);
 });
@@ -130,7 +140,6 @@ app.get('/post/:id', async (req, res) => {
   res.json(postDoc);
 });
 
-// ✅ DELETE route for deleting a post (added auth + author check)
 app.delete('/post/:id', authMiddleware, async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
